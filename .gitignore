@@ -1,0 +1,31 @@
+# Archivos de estado de Terraform
+# Pueden contener información sensible.
+*.tfstate
+*.tfstate.*
+
+# Archivos de bloqueo de Terraform
+# Gestionan el bloqueo de estado para evitar ejecuciones simultáneas
+.terraform.lock.hcl
+
+# Directorio local de Terraform
+# Contiene los plugins y módulos descargados por 'terraform init'
+.terraform/
+
+# Archivos de variables locales
+# Estos archivos se usan para pasar valores sensibles como contraseñas
+*.tfvars
+*.tfvars.json
+
+# Archivos de override
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Logs de errores de Terraform
+crash.log
+
+# Archivos de configuración de IDEs y sistemas operativos
+.vscode/
+.idea/
+.DS_Store
