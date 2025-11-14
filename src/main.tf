@@ -28,7 +28,7 @@ resource "aws_subnet" "private" {
 
 resource "aws_subnet" "private_db" {
   vpc_id     = aws_vpc.main.id
-  cidr_block = var.subnet_private_cidr
+  cidr_block = var.subnet_private_cidr_2
   availability_zone = var.private_subnet_az_1
 
   tags = {
