@@ -16,6 +16,17 @@ resource "aws_subnet" "public" {
   }
 }
 
+resource "aws_subnet" "public_2" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = var.subnet_public_cidr_2
+  map_public_ip_on_launch = true
+  availability_zone       = var.public_subnet_az_2
+
+  tags = {
+    Name = "${var.app_name}-subnet-front-2"
+  }
+}
+
 resource "aws_subnet" "private" {
   vpc_id     = aws_vpc.main.id
   cidr_block = var.subnet_private_cidr
@@ -28,7 +39,7 @@ resource "aws_subnet" "private" {
 
 resource "aws_subnet" "private_db" {
   vpc_id     = aws_vpc.main.id
-  cidr_block = var.subnet_private_cidr
+  cidr_block = var.subnet_private_cidr_2
   availability_zone = var.private_subnet_az_1
 
   tags = {
@@ -42,6 +53,30 @@ resource "aws_internet_gateway" "main" {
   tags = {
     Name = "${var.app_name}-igw"
   }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.app_name}-rt-public"
+  }
+}
+
+resource "aws_route" "public_internet_access" {
+  route_table_id         = aws_route_table.public.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.main.id
+}
+
+resource "aws_route_table_association" "public_1" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "public_2" {
+  subnet_id      = aws_subnet.public_2.id
+  route_table_id = aws_route_table.public.id
 }
 
 resource "aws_ecr_repository" "main" {

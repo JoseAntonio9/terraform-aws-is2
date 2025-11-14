@@ -46,6 +46,12 @@ variable "subnet_private_cidr" {
   default     = "10.0.6.0/24"
 }
 
+variable "subnet_private_cidr_2" {
+  type        = string
+  description = "CIDR for the second private subnet"
+  default     = "10.0.7.0/24"
+}
+
 variable "public_subnet_az_1" {
   description = "Availability zone for the first public subnet (e.g. us-east-1a)"
   type        = string
@@ -122,5 +128,5 @@ variable "db_password" {
   description = "Contraseña para el administrador de la base de datos."
   type        = string
   sensitive   = true
-  default = "123456Absrc"
+  # Sin valor default
 }
