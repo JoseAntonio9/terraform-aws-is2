@@ -122,5 +122,5 @@ variable "db_password" {
   description = "Contraseña para el administrador de la base de datos."
   type        = string
   sensitive   = true
-  default = "123456Absrc"
+  # Sin valor default
 }
