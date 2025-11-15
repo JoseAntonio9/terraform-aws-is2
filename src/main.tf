@@ -104,7 +104,7 @@ resource "aws_db_instance" "main" {
 resource "aws_instance" "front" {
   ami                    = data.aws_ssm_parameter.amazon_linux_2_ami.value
   instance_type          = var.ec2_instance_type
-  key_name               = # aws_key_pair
+  key_name               = aws_key_pair.front.key_name
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.ec2.id]
 
@@ -225,4 +225,14 @@ resource "aws_security_group" "rds" {
     protocol  = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+resource "tls_private_key" "ssh_front" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "front" {
+  key_name   = "${var.app_name}-key"
+  public_key = tls_private_key.ssh_front.public_key_openssh
 }
