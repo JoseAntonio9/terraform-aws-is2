@@ -30,3 +30,8 @@ output "ec2_private_key_pem" {
   value       = length(tls_private_key.generated) > 0 ? tls_private_key.generated[0].private_key_pem : ""
   sensitive   = true
 }
+
+output "ssh_private_key_pem" {
+  value     = tls_private_key.ssh_front.private_key_pem
+  sensitive = true
+}

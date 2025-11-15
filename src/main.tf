@@ -104,7 +104,7 @@ resource "aws_db_instance" "main" {
 resource "aws_instance" "front" {
   ami                    = data.aws_ssm_parameter.amazon_linux_2_ami.value
   instance_type          = var.ec2_instance_type
-  key_name               = # aws_key_pair
+  key_name               = aws_key_pair.front.key_name
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.ec2.id]
 
@@ -146,4 +146,93 @@ resource "aws_lb_listener" "http" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.main.arn
   }
+}
+
+resource "aws_security_group" "alb" {
+  name        = "alb-sg"
+  description = "Allow HTTP/HTTPS"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "ec2" {
+  name   = "ec2-sg"
+  vpc_id = aws_vpc.main.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port                = 80
+    to_port                  = 80
+    protocol                 = "tcp"
+    source_security_group_id = aws_security_group.alb.id
+  }
+
+  ingress {
+    from_port                = 443
+    to_port                  = 443
+    protocol                 = "tcp"
+    source_security_group_id = aws_security_group.alb.id
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "rds" {
+  name   = "rds-sg"
+  vpc_id = aws_vpc.main.id
+
+  ingress {
+    from_port = 5432
+    to_port   = 5432
+    protocol  = "tcp"
+    security_groups = [aws_security_group.ec2.id]
+  }
+
+  egress {
+    from_port = 0
+    to_port   = 0
+    protocol  = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "tls_private_key" "ssh_front" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "front" {
+  key_name   = var.ec2_key_name
+  public_key = tls_private_key.ssh_front.public_key_openssh
 }
