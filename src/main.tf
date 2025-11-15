@@ -233,6 +233,6 @@ resource "tls_private_key" "ssh_front" {
 }
 
 resource "aws_key_pair" "front" {
-  key_name   = "${var.app_name}-key"
+  key_name   = var.ec2_key_name
   public_key = tls_private_key.ssh_front.public_key_openssh
 }
