@@ -47,6 +47,10 @@ resource "aws_subnet" "private_db" {
   }
 }
 
+data "aws_ssm_parameter" "amazon_linux_2_ami" {
+  name = "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+}
+
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
@@ -86,6 +90,15 @@ resource "aws_ecr_repository" "main" {
   }
 }
 
+resource "aws_db_subnet_group" "main" {
+  name       = "${var.app_name}-db-subnet-group"
+  subnet_ids = [aws_subnet.private.id, aws_subnet.private_db.id]
+
+  tags = {
+    Name = "${var.app_name}-db-subnet-group"
+  }
+}
+
 resource "aws_db_instance" "main" {
   identifier             = "${var.app_name}-db"
   db_name                = var.db_name
@@ -95,7 +108,7 @@ resource "aws_db_instance" "main" {
   storage_type           = "gp2"
   username               = var.db_user
   password               = var.db_password
-  db_subnet_group_name   = # aws_db_subnet_group
+  db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
   skip_final_snapshot    = true
@@ -107,9 +120,35 @@ resource "aws_instance" "front" {
   key_name               = aws_key_pair.front.key_name
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.ec2.id]
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              amazon-linux-extras install docker -y
+              service docker start
+              usermod -a -G docker ec2-user
+              EOF
 
   tags = {
     Name = "${var.app_name}-instance"
+  }
+}
+
+resource "aws_instance" "back" {
+  ami                    = data.aws_ssm_parameter.amazon_linux_2_ami.value
+  instance_type          = var.ec2_instance_type
+  key_name               = aws_key_pair.front.key_name
+  subnet_id              = aws_subnet.public_2.id      
+  vpc_security_group_ids = [aws_security_group.ec2.id] 
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              amazon-linux-extras install docker -y
+              service docker start
+              usermod -a -G docker ec2-user
+              EOF
+
+  tags = {
+    Name = "${var.app_name}-instance-back"
   }
 }
 
@@ -146,6 +185,18 @@ resource "aws_lb_listener" "http" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.main.arn
   }
+}
+
+resource "aws_lb_target_group_attachment" "front" {
+  target_group_arn = aws_lb_target_group.main.arn
+  target_id        = aws_instance.front.id
+  port             = 80
+}
+
+resource "aws_lb_target_group_attachment" "back" {
+  target_group_arn = aws_lb_target_group.main.arn
+  target_id        = aws_instance.back.id
+  port             = 80
 }
 
 resource "aws_security_group" "alb" {
