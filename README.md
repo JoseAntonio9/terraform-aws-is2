@@ -23,14 +23,14 @@ La infraestructura desplegada consiste en:
 
 1.  **Clonar el repositorio:**
     ```bash
-    git clone https://github.com/tu-usuario/terraform-aws-is2.git
+    git clone https://github.com/JoseAntonio9/terraform-aws-is2.git
     cd terraform-aws-is2
     ```
 
 2.  **Configurar variables:**
     Crea un archivo llamado `terraform.tfvars` (este archivo será ignorado por Git) y define las variables necesarias, especialmente las sensibles.
     ```hcl
-    db_password = "UnaContraseñaMuySegura123!"
+    db_password = "UnaContraseñaPersonalizada"
     ```
 
 3.  **Inicializar Terraform:**
