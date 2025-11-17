@@ -80,7 +80,7 @@ variable "private_subnet_az_4" {
 variable "private_subnet_az_1" {
   type        = string
   description = "Availability Zone for the first private subnet (e.g. us-east-1a)"
-  default     = "us-east-11"
+  default     = "us-east-1d"
 }
 
 variable "ec2_key_name" {
