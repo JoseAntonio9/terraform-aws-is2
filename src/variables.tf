@@ -74,13 +74,13 @@ variable "public_subnet_az_3" {
 variable "private_subnet_az_4" {
   type        = string
   description = "Availability Zone for the first private subnet (e.g. us-east-1a)"
-  default     = "us-east-1d"
+  default     = "us-east-1a"
 }
 
 variable "private_subnet_az_1" {
   type        = string
-  description = "Availability Zone for the first private subnet (e.g. us-east-1a)"
-  default     = "us-east-1d"
+  description = "Availability Zone for the second private subnet (e.g. us-east-1b)"
+  default     = "us-east-1b"
 }
 
 variable "ec2_key_name" {
