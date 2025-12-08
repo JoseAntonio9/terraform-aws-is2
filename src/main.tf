@@ -120,16 +120,19 @@ resource "aws_instance" "front" {
   key_name               = aws_key_pair.front.key_name
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.ec2.id]
+  
+  # Script User Data robusto para instalar y configurar Docker al inicio
   user_data = <<-EOF
               #!/bin/bash
               yum update -y
               amazon-linux-extras install docker -y
               service docker start
+              systemctl enable docker
               usermod -a -G docker ec2-user
               EOF
 
   tags = {
-    Name = "${var.app_name}-instance"
+    Name = "${var.app_name}-instance-front"
   }
 }
 
@@ -139,17 +142,79 @@ resource "aws_instance" "back" {
   key_name               = aws_key_pair.front.key_name
   subnet_id              = aws_subnet.public_2.id      
   vpc_security_group_ids = [aws_security_group.ec2.id] 
+  
+  # Mismo script para el backend
   user_data = <<-EOF
               #!/bin/bash
               yum update -y
               amazon-linux-extras install docker -y
               service docker start
+              systemctl enable docker
               usermod -a -G docker ec2-user
               EOF
 
   tags = {
     Name = "${var.app_name}-instance-back"
   }
+}
+
+# --- IPs ELASTICAS ---
+
+resource "aws_eip" "front" {
+  domain = "vpc"
+  tags = {
+    Name = "${var.app_name}-eip-front"
+  }
+}
+
+resource "aws_eip_association" "front" {
+  instance_id   = aws_instance.front.id
+  allocation_id = aws_eip.front.id
+}
+
+resource "aws_eip" "back" {
+  domain = "vpc"
+  tags = {
+    Name = "${var.app_name}-eip-back"
+  }
+}
+
+resource "aws_eip_association" "back" {
+  instance_id   = aws_instance.back.id
+  allocation_id = aws_eip.back.id
+}
+
+# --- DNS ROUTE 53 (Parte 2.2) ---
+
+resource "aws_route53_zone" "main" {
+  name = var.domain_name
+}
+
+# Registro para Frontend (Raíz @)
+resource "aws_route53_record" "front_root" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = var.domain_name
+  type    = "A"
+  ttl     = "300"
+  records = [aws_eip.front.public_ip]
+}
+
+# Registro para Frontend (Subdominio www)
+resource "aws_route53_record" "front_www" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = "www.${var.domain_name}"
+  type    = "A"
+  ttl     = "300"
+  records = [aws_eip.front.public_ip]
+}
+
+# Registro para Backend (Subdominio api)
+resource "aws_route53_record" "back_api" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = "api.${var.domain_name}"
+  type    = "A"
+  ttl     = "300"
+  records = [aws_eip.back.public_ip]
 }
 
 resource "aws_lb" "main" {
@@ -241,14 +306,22 @@ resource "aws_security_group" "ec2" {
     from_port                = 80
     to_port                  = 80
     protocol                 = "tcp"
-    security_groups = [aws_security_group.alb.id]
+    # Permitimos tráfico del ALB y de cualquier lugar porque ahora apuntamos DNS directo a la IP
+    cidr_blocks              = ["0.0.0.0/0"] 
   }
 
   ingress {
     from_port                = 443
     to_port                  = 443
     protocol                 = "tcp"
-    security_groups = [aws_security_group.alb.id]
+    cidr_blocks              = ["0.0.0.0/0"]
+  }
+  
+  ingress {
+    from_port                = 5000
+    to_port                  = 5000
+    protocol                 = "tcp"
+    cidr_blocks              = ["0.0.0.0/0"]
   }
 
   egress {

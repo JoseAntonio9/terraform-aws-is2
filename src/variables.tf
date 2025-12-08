@@ -70,7 +70,6 @@ variable "public_subnet_az_3" {
   default     = "us-east-1c"
 }
 
-
 variable "private_subnet_az_4" {
   type        = string
   description = "Availability Zone for the first private subnet (e.g. us-east-1a)"
@@ -128,5 +127,10 @@ variable "db_password" {
   description = "Contraseña para el administrador de la base de datos."
   type        = string
   sensitive   = true
-  # Sin valor default
+}
+
+variable "domain_name" {
+  description = "Nombre del dominio comprado en Namecheap"
+  type        = string
+  default     = "equipo-ids2-ciencias.xyz"
 }
