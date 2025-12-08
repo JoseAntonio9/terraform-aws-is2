@@ -45,7 +45,7 @@ jobs:
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: frontend
-        REACT_APP_API_URL: http://api.equipo-ids2-ciencias.xyz:5000
+        REACT_APP_API_URL: http://api.equipo-ids2-ciencias.xyz:5000/api
       run: |
         if [ ! -d "frontend" ]; then
           echo "ERROR: La carpeta 'frontend' no existe."
