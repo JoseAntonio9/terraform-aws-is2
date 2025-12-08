@@ -1,31 +1,32 @@
-# Práctica 4: Infraestructura en AWS con Terraform - Ingeniería de Software II
+# Práctica 5: Despliegue Continuo (CD), IPs Elásticas y Dominios en AWS
 
-Este repositorio contiene el código de **Infrastructure as Code (IaC)** para desplegar una arquitectura web de alta disponibilidad en AWS. La práctica incluye la configuración de red, cómputo, base de datos y almacenamiento de contenedores para alojar la aplicación **TaskFlow**.
+Este repositorio contiene la infraestructura como código (Terraform) y los flujos de automatización (GitHub Actions) para desplegar una arquitectura web robusta y resiliente en AWS para la aplicación **TaskFlow**.
 
-## Arquitectura Desplegada
+Esta práctica evoluciona la arquitectura anterior implementando **IPs Estáticas**, **Gestión de DNS** y un pipeline de **Integración y Despliegue Continuo (CI/CD)**.
 
-La infraestructura se compone de los siguientes recursos:
+## Arquitectura Evolucionada
 
-*   **Red (VPC):** Subredes públicas (para balanceador y servidores web) y privadas (para base de datos) en múltiples zonas de disponibilidad.
-*   **Acceso:** Un **Application Load Balancer (ALB)** que distribuye el tráfico entre las instancias.
-*   **Cómputo:** Dos instancias **EC2 (Amazon Linux 2)** con Docker preinstalado, configuradas para alta disponibilidad.
-*   **Datos:** Una base de datos **PostgreSQL en RDS**, aislada en la red privada.
-*   **Artefactos:** Un repositorio **ECR** para alojar las imágenes Docker del Frontend y Backend.
-*   **Seguridad:** Grupos de seguridad estrictos (El backend solo acepta tráfico del frontend, la BD solo del backend).
+La infraestructura se compone de:
+
+*   **Red (VPC):** Subredes públicas y privadas en múltiples AZs.
+*   **Persistencia de Red:** **Elastic IPs (EIP)** para garantizar que las direcciones IP de los servidores no cambien, incluso si se recrean.
+*   **DNS (Route 53):** Zona alojada gestionada por código que apunta el dominio personalizado a las IPs Elásticas.
+*   **Cómputo:** Instancias **EC2** configuradas con `user_data` para aprovisionamiento automático de Docker.
+*   **CI/CD:** Pipeline de **GitHub Actions** que construye, sube imágenes a **ECR** y despliega automáticamente en EC2.
+*   **Base de Datos:** RDS PostgreSQL aislado en subred privada.
 
 ## Prerrequisitos
 
 *   Cuenta de AWS activa.
-*   [AWS CLI](https://aws.amazon.com/cli/) instalado y configurado (`aws configure`).
 *   [Terraform](https://www.terraform.io/) instalado.
-*   [Docker](https://www.docker.com/) instalado localmente (para construir las imágenes).
-*   Código fuente de la aplicación (Frontend y Backend).
+*   Dominio comprado en Namecheap (o similar).
+*   Acceso al repositorio de GitHub para configurar secretos.
 
 ---
 
 ## Guía de Despliegue
 
-### Fase 1: Provisionamiento de Infraestructura (Terraform)
+### Fase 1: Infraestructura (Terraform)
 
 1.  **Clonar el repositorio:**
     ```bash
@@ -33,10 +34,11 @@ La infraestructura se compone de los siguientes recursos:
     cd terraform-aws-is2/src
     ```
 
-2.  **Configurar secretos:**
-    Crea un archivo `terraform.tfvars` (ignorado por git) para definir la contraseña de la base de datos:
+2.  **Configurar variables:**
+    Crea o edita el archivo `terraform.tfvars`:
     ```hcl
     db_password = "TuContraseñaSegura123!"
+    domain_name = "equipo-ids2-ciencias.xyz"
     ```
 
 3.  **Inicializar y Aplicar:**
@@ -45,107 +47,59 @@ La infraestructura se compone de los siguientes recursos:
     terraform apply
     # Escribe 'yes' para confirmar
     ```
+    *Nota: Esto creará las IPs Elásticas y la Zona DNS.*
 
-4.  **Guardar las Salidas (Outputs):**
-    Al finalizar, Terraform mostrará datos críticos. **Guárdalos**, los necesitarás para la Fase 2.
-    *   `alb_dns_name`: URL de la aplicación.
-    *   `ecr_repository_url`: URL del repositorio de imágenes.
-    *   `rds_endpoint`: Dirección de la base de datos.
-    *   `ec2_front_public_ip` y `ec2_back_public_ip`: IPs para acceso SSH.
+4.  **Obtener Datos Críticos (Outputs):**
+    Al finalizar, Terraform mostrará los `nameservers`. **Cópialos**.
 
-5.  **Extraer la Llave SSH:**
-    Ejecuta este comando para guardar la llave privada generada y darle los permisos correctos:
-    ```bash
-    terraform output -raw ssh_private_key_pem > ../mi-llave.pem
-    chmod 400 ../mi-llave.pem
-    ```
+### Fase 2: Configuración de DNS (Manual)
 
----
+1.  Ve a tu panel de administración de dominio (ej. Namecheap).
+2.  Busca la configuración de **Nameservers**.
+3.  Selecciona "Custom DNS".
+4.  Ingresa los 4 servidores que te devolvió el output de Terraform (`aws_route53_zone`).
+5.  Guarda los cambios.
 
-### Fase 2: Construcción y Publicación de Imágenes (Docker)
+### Fase 3: Configuración del Pipeline (CI/CD)
 
-Desde tu máquina local, debes construir las imágenes y subirlas a AWS ECR.
+Para que GitHub Actions pueda desplegar, ve a **Settings > Secrets and variables > Actions** en tu repositorio y agrega:
 
-1.  **Iniciar sesión en ECR:**
-    ```bash
-    # Reemplaza <REGION> y <ECR_URL> con tus valores (ej: us-east-1 y la salida de terraform)
-    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ECR_URL>
-    ```
+| Secreto | Valor | Fuente |
+| :--- | :--- | :--- |
+| `AWS_ACCESS_KEY_ID` | Tu Access Key | IAM AWS |
+| `AWS_SECRET_ACCESS_KEY` | Tu Secret Key | IAM AWS |
+| `DB_PASSWORD` | Contraseña de la BD | Tu `terraform.tfvars` |
+| `RDS_ENDPOINT` | Endpoint de Postgres | Output `rds_endpoint` |
+| `EC2_FRONT_HOST` | IP Elástica del Front | Output `ec2_front_eip` |
+| `EC2_BACK_HOST` | IP Elástica del Back | Output `ec2_back_eip` |
+| `SSH_PRIVATE_KEY` | Contenido de tu `.pem` | Output `ssh_private_key_pem` |
 
-2.  **Backend (Flask):**
-    ```bash
-    cdruta/al/backend
-    docker build -t taskflow-backend .
-    docker tag taskflow-backend:latest <ECR_URL>:backend
-    docker push <ECR_URL>:backend
-    ```
+### Fase 4: Despliegue Automático
 
-3.  **Frontend (React + Nginx):**
-    Es importante pasar la variable de entorno para la API durante el build.
-    ```bash
-    cd ruta/al/frontend
-    docker build --build-arg REACT_APP_API_URL=/api -t taskflow-frontend .
-    docker tag taskflow-frontend:latest <ECR_URL>:frontend
-    docker push <ECR_URL>:frontend
-    ```
+Ya no es necesario entrar manualmente a los servidores.
 
----
-
-### Fase 3: Ejecución en Servidores (SSH)
-
-Debes realizar estos pasos en **AMBAS** instancias EC2 (`front` y `back`) para lograr la alta disponibilidad.
-
-1.  **Conectarse por SSH:**
-    ```bash
-    ssh -i "../mi-llave.pem" ec2-user@<IP_PUBLICA_INSTANCIA>
-    ```
-
-2.  **Configurar credenciales en la instancia:**
-    La primera vez, la instancia necesita permisos para descargar de ECR.
-    ```bash
-    aws configure
-    # Ingresa tus Access Key ID, Secret Key y región (us-east-1)
-    ```
-
-3.  **Iniciar sesión en Docker (dentro de la instancia):**
-    ```bash
-    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ECR_URL>
-    ```
-
-4.  **Ejecutar Backend:**
-    ```bash
-    docker run -d --name backend --restart always -p 5000:5000 \
-      -e DATABASE_URL="postgresql://dbadmin:<DB_PASSWORD>@<RDS_ENDPOINT>/miappdb" \
-      <ECR_URL>:backend
-    ```
-
-5.  **Ejecutar Frontend:**
-    ```bash
-    docker run -d --name frontend --restart always --network host \
-      <ECR_URL>:frontend
-    ```
+1.  Realiza cualquier cambio en el código (Frontend, Backend o Infra).
+2.  Haz un push a la rama `main`.
+3.  Ve a la pestaña **Actions** en GitHub.
+4.  El pipeline se ejecutará: construirá las imágenes, las subirá a ECR y actualizará los servidores automáticamente.
 
 ---
 
 ## Verificación
 
-Una vez desplegado en ambas instancias, accede a la aplicación a través del Balanceador de Carga:
+Una vez finalizado el pipeline y propagado el DNS (puede tardar unos minutos), accede a tu aplicación mediante tu dominio personalizado:
 
-**URL:** `http://<ALB_DNS_NAME>`
-
-Deberás ver nuestra aplicación TaskFlow funcionando. El tráfico será balanceado automáticamente entre ambas instancias.
+**Frontend:** `http://www.equipo-ids2-ciencias.xyz` o `http://equipo-ids2-ciencias.xyz`
+**Backend API:** `http://api.equipo-ids2-ciencias.xyz/api/health`
 
 ---
 
 ## Limpieza (Destroy)
 
-Para evitar costos, elimina la infraestructura cuando no la necesites.
-
-1.  **Importante:** Primero vacía el repositorio ECR manualmente desde la consola de AWS o usando CLI (Terraform fallará si el repo tiene imágenes).
-2.  Ejecuta la destrucción:
+1.  Elimina manualmente las imágenes del repositorio ECR desde la consola de AWS.
+2.  Ejecuta:
     ```bash
     terraform destroy
-    # Escribe 'yes' para confirmar
     ```
 
 ## Equipo de Desarrollo
