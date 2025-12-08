@@ -1,0 +1,130 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: mi-app-repo
+
+jobs:
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build & Push Backend Image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: backend
+      run: |
+        cd backend
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+    - name: Build & Push Frontend Image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: frontend
+        # Aquí definimos que el Frontend debe hablarle al subdominio 'api'
+        REACT_APP_API_URL: http://api.equipo-ids2-ciencias.xyz
+      run: |
+        cd frontend
+        docker build --build-arg REACT_APP_API_URL=$REACT_APP_API_URL -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+  deploy-backend:
+    name: Deploy Backend to EC2
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Deploy to Backend Instance
+      uses: appleboy/ssh-action@v0.1.10
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        # NOTA: Se necesita obtener este endpoint de Terraform y guardarlo como secreto o hardcodearlo
+        # Para la práctica, hardcodearemos la parte fija del DNS de AWS si no cambia, o mejor usamos la variable
+        RDS_ENDPOINT: ${{ secrets.RDS_ENDPOINT }} 
+      with:
+        host: ${{ secrets.EC2_BACK_HOST }} # IP Elástica del Backend
+        username: ec2-user
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        envs: ECR_REGISTRY,DB_PASSWORD,RDS_ENDPOINT,ECR_REPOSITORY
+        script: |
+          # Login en ECR
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+          
+          # Actualizar Backend
+          docker stop backend || true
+          docker rm backend || true
+          docker pull $ECR_REGISTRY/$ECR_REPOSITORY:backend
+          
+          docker run -d --name backend --restart always -p 5000:5000 \
+            -e DATABASE_URL="postgresql://dbadmin:$DB_PASSWORD@$RDS_ENDPOINT/miappdb" \
+            $ECR_REGISTRY/$ECR_REPOSITORY:backend
+
+  deploy-frontend:
+    name: Deploy Frontend to EC2
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Deploy to Frontend Instance
+      uses: appleboy/ssh-action@v0.1.10
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      with:
+        host: ${{ secrets.EC2_FRONT_HOST }} # IP Elástica del Frontend
+        username: ec2-user
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        envs: ECR_REGISTRY,ECR_REPOSITORY
+        script: |
+          # Login en ECR
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+          
+          # Actualizar Frontend
+          docker stop frontend || true
+          docker rm frontend || true
+          docker pull $ECR_REGISTRY/$ECR_REPOSITORY:frontend
+          
+          docker run -d --name frontend --restart always --network host \
+            $ECR_REGISTRY/$ECR_REPOSITORY:frontend
