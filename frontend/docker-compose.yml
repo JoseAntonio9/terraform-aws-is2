@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # Servicio del Frontend (React + Nginx)
+  frontend:
+    # Construye la imagen usando el Dockerfile en el directorio actual (.)
+    build: .
+    # (Opcional) O usa una imagen ya subida a un registry
+    # image: ghcr.io/tu-usuario-github/taskflow-frontend:latest
+    ports:
+      # Mapea el puerto 8080 de tu máquina al puerto 80 del contenedor
+      - "8080:80"
+    # Reinicia el contenedor si falla
+    restart: always
+    # Depende del servicio de backend para iniciar
+    depends_on:
+      - backend
+    # Se conecta a la red compartida
+    networks:
+      - taskflow-net
+
+  # Servicio del Backend (Flask + Gunicorn - tu equipo se encarga de su Dockerfile)
+  backend:
+    # Asume que el Dockerfile del backend está en una carpeta llamada 'backend'
+    # Deberás ajustar esto a la estructura final del repositorio combinado o usar la imagen de GHCR
+    build:
+      context: ../taskflow-backend # Ruta relativa al repo del backend
+    # (Opcional) O usa la imagen que tu compañero suba
+    # image: ghcr.io/el-usuario-de-tu-compañero/taskflow-backend:latest
+    ports:
+      # Mapea el puerto 5000 de tu máquina al puerto 5000 del contenedor
+      - "5000:5000"
+    volumes:
+      # Monta un volumen para persistir la base de datos SQLite
+      - taskflow-db:/app/instance
+    restart: always
+    # Se conecta a la red compartida
+    networks:
+      - taskflow-net
+    environment:
+      # Asegúrate de que el frontend sepa a dónde apuntar dentro de la red Docker
+      # React usará esta variable en el navegador del usuario, por lo que debe ser localhost
+      - REACT_APP_API_URL=http://localhost:5000/api
+
+# Define la red que usarán los contenedores para comunicarse
+networks:
+  taskflow-net:
+    driver: bridge
+
+# Define el volumen para la base de datos
+volumes:
+  taskflow-db:
