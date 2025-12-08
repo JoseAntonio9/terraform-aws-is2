@@ -15,10 +15,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4  
 
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
+      uses: aws-actions/configure-aws-credentials@v4 
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -26,13 +26,19 @@ jobs:
 
     - name: Login to Amazon ECR
       id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
+      uses: aws-actions/amazon-ecr-login@v2 
 
     - name: Build & Push Backend Image
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: backend
       run: |
+        # Verificamos que la carpeta exista antes de entrar
+        if [ ! -d "backend" ]; then
+          echo "ERROR: La carpeta 'backend' no existe en el repositorio."
+          ls -R
+          exit 1
+        fi
         cd backend
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
@@ -41,9 +47,14 @@ jobs:
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: frontend
-        # Aquí definimos que el Frontend debe hablarle al subdominio 'api'
         REACT_APP_API_URL: http://api.equipo-ids2-ciencias.xyz
       run: |
+        # Verificamos que la carpeta exista antes de entrar
+        if [ ! -d "frontend" ]; then
+          echo "ERROR: La carpeta 'frontend' no existe en el repositorio."
+          ls -R
+          exit 1
+        fi
         cd frontend
         docker build --build-arg REACT_APP_API_URL=$REACT_APP_API_URL -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
@@ -55,7 +66,7 @@ jobs:
     
     steps:
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
+      uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -63,18 +74,17 @@ jobs:
 
     - name: Login to Amazon ECR
       id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
+      uses: aws-actions/amazon-ecr-login@v2
 
     - name: Deploy to Backend Instance
-      uses: appleboy/ssh-action@v0.1.10
+      uses: appleboy/ssh-action@v1.0.3 
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        # NOTA: Se necesita obtener este endpoint de Terraform y guardarlo como secreto o hardcodearlo
-        # Para la práctica, hardcodearemos la parte fija del DNS de AWS si no cambia, o mejor usamos la variable
         RDS_ENDPOINT: ${{ secrets.RDS_ENDPOINT }} 
+        ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }} 
       with:
-        host: ${{ secrets.EC2_BACK_HOST }} # IP Elástica del Backend
+        host: ${{ secrets.EC2_BACK_HOST }}
         username: ec2-user
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         envs: ECR_REGISTRY,DB_PASSWORD,RDS_ENDPOINT,ECR_REPOSITORY
@@ -98,7 +108,7 @@ jobs:
     
     steps:
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
+      uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -106,14 +116,15 @@ jobs:
 
     - name: Login to Amazon ECR
       id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
+      uses: aws-actions/amazon-ecr-login@v2
 
     - name: Deploy to Frontend Instance
-      uses: appleboy/ssh-action@v0.1.10
+      uses: appleboy/ssh-action@v1.0.3
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
       with:
-        host: ${{ secrets.EC2_FRONT_HOST }} # IP Elástica del Frontend
+        host: ${{ secrets.EC2_FRONT_HOST }}
         username: ec2-user
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         envs: ECR_REGISTRY,ECR_REPOSITORY
