@@ -1,0 +1,87 @@
+# Nombre del workflow que aparecerá en la pestaña "Actions" de GitHub
+name: Frontend CI/CD Pipeline
+
+# Configuración del disparador (Trigger)
+# Se ejecuta en cada push y pull request a la rama 'main'
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # ------ PRIMER JOB: PROBAR LA APLICACIÓN ------
+  test:
+    # Nombre del job que se mostrará en la UI de GitHub
+    name: Test Application
+    # El tipo de máquina virtual en la que se ejecutará el job
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Clona el repositorio para tener acceso al código
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Configura el entorno de Node.js
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18' # Usar una versión consistente con el Dockerfile
+          cache: 'npm' # Habilita el caché para acelerar la instalación de dependencias
+
+      # 3. Instalar dependencias
+      # 'npm ci' es más rápido y seguro para CI que 'npm install'
+      - name: Install dependencies
+        run: npm ci
+
+      # 4. Ejecución de las pruebas unitarias
+      - name: Run unit tests
+        run: npm test
+
+  # ------ SEGUNDO JOB: CONSTRUIR Y PUBLICAR LA IMAGEN DOCKER ------
+  build-and-push:
+    # Nombre del job
+    name: Build and Push Docker Image
+    # Se ejecuta en una máquina virtual de Ubuntu
+    runs-on: ubuntu-latest
+    # IMPORTANTE: Este job depende del éxito del job 'test'
+    needs: test
+    # IMPORTANTE: Solo se ejecuta en pushes a 'main', no en Pull Requests
+    # Esto evita publicar imágenes por cada commit en un PR, manteniendo limpio el registry.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    # Permisos necesarios para que el GITHUB_TOKEN pueda subir imágenes
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # 1. Clona el repositorio
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Inicia sesión en el GitHub Container Registry (GHCR)
+      # Usa el GITHUB_TOKEN que GitHub Actions proporciona automáticamente
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3. Extrae metadatos (etiquetas y nombres) para la imagen Docker
+      # Esto genera etiquetas como 'latest' y una etiqueta única con el hash del commit
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      # 4. Construye la imagen Docker y la publica en GHCR
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
